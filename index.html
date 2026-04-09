@@ -38,35 +38,7 @@
     #result.already { background: #e65100; border: 2px solid #ff9800; }
     .name { font-size: 28px; font-weight: bold; margin: 10px 0; }
     .number { font-size: 18px; color: #aaa; }
-    #reset-btn {
-      margin-top: 20px;
-      padding: 12px 32px;
-      font-size: 18px;
-      background: #444;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      display: none;
-    }
-    #reset-btn:hover { background: #666; }
     #scanning-text { margin-top: 12px; color: #aaa; font-size: 14px; }
-    #timer-bar-container {
-      width: 100%;
-      max-width: 500px;
-      height: 6px;
-      background: #333;
-      border-radius: 3px;
-      margin-top: 10px;
-      display: none;
-    }
-    #timer-bar {
-      height: 100%;
-      background: #4caf50;
-      border-radius: 3px;
-      width: 100%;
-      transition: width 3s linear;
-    }
   </style>
 </head>
 <body>
@@ -77,10 +49,6 @@
   </div>
   <p id="scanning-text">QRコードをカメラにかざしてください</p>
   <div id="result"></div>
-  <div id="timer-bar-container">
-    <div id="timer-bar"></div>
-  </div>
-  <button id="reset-btn" onclick="resetScanner()">次の人へ</button>
 
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxUODC2F-hbGRvkOZ2EN-XRpatzJOgEwQiZxNvEZ_TFppXrgKN8rd7RcHHdEq9ZX2KW3A/exec';
@@ -89,12 +57,10 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const resultDiv = document.getElementById('result');
-    const resetBtn = document.getElementById('reset-btn');
     const scanningText = document.getElementById('scanning-text');
-    const timerBarContainer = document.getElementById('timer-bar-container');
-    const timerBar = document.getElementById('timer-bar');
     let processing = false;
-    let autoResetTimer = null;
+    let lastUUID = '';
+    let lastUUIDTime = 0;
 
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => {
@@ -113,14 +79,17 @@
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height);
-        if (code && !processing) {
-          processing = true;
-          if (autoResetTimer) {
-            clearTimeout(autoResetTimer);
-            autoResetTimer = null;
+        if (code) {
+          const now = Date.now();
+          // 同じQRコードを3秒以内に連続読み取りしない
+          if (code.data !== lastUUID || now - lastUUIDTime > 3000) {
+            if (!processing) {
+              processing = true;
+              lastUUID = code.data;
+              lastUUIDTime = now;
+              processQR(code.data);
+            }
           }
-          scanningText.textContent = '読み取り中...';
-          processQR(code.data);
         }
       }
       requestAnimationFrame(scanFrame);
@@ -129,14 +98,18 @@
     function processQR(uuid) {
       fetch(GAS_URL + '?uuid=' + encodeURIComponent(uuid))
         .then(res => res.json())
-        .then(result => showResult(result))
-        .catch(err => showError(err));
+        .then(result => {
+          showResult(result);
+          processing = false;
+        })
+        .catch(err => {
+          showError(err);
+          processing = false;
+        });
     }
 
     function showResult(result) {
       resultDiv.style.display = 'block';
-      resetBtn.style.display = 'inline-block';
-      scanningText.style.display = 'none';
 
       if (result.status === 'success') {
         resultDiv.className = 'success';
@@ -156,46 +129,12 @@
         resultDiv.className = 'error';
         resultDiv.innerHTML = `<div>❌ 該当者が見つかりません</div>`;
       }
-
-      // タイマーバー表示
-      timerBarContainer.style.display = 'block';
-      timerBar.style.width = '100%';
-      setTimeout(() => { timerBar.style.width = '0%'; }, 50);
-
-      // 3秒後に自動リセット
-      autoResetTimer = setTimeout(() => {
-        resetScanner();
-      }, 3000);
     }
 
     function showError(err) {
       resultDiv.style.display = 'block';
       resultDiv.className = 'error';
       resultDiv.innerHTML = `<div>❌ エラーが発生しました</div>`;
-      resetBtn.style.display = 'inline-block';
-      scanningText.style.display = 'none';
-
-      timerBarContainer.style.display = 'block';
-      timerBar.style.width = '100%';
-      setTimeout(() => { timerBar.style.width = '0%'; }, 50);
-
-      autoResetTimer = setTimeout(() => {
-        resetScanner();
-      }, 3000);
-    }
-
-    function resetScanner() {
-      if (autoResetTimer) {
-        clearTimeout(autoResetTimer);
-        autoResetTimer = null;
-      }
-      resultDiv.style.display = 'none';
-      resetBtn.style.display = 'none';
-      timerBarContainer.style.display = 'none';
-      timerBar.style.width = '100%';
-      scanningText.style.display = 'block';
-      scanningText.textContent = 'QRコードをカメラにかざしてください';
-      processing = false;
     }
   </script>
 </body>
