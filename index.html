@@ -107,7 +107,7 @@
         .catch(err => {
           showError(err);
           processing = false;
-          lastUUID = ''; // エラー時はリセットして再試行できるように
+          lastUUID = '';
         });
     }
 
@@ -149,6 +149,13 @@
         resultDiv.style.display = 'none';
       }, 3000);
     }
+
+    // GASをウォームアップし続ける（30秒おき）
+    function warmup() {
+      fetch(GAS_URL + '?warmup=1').catch(() => {});
+    }
+    warmup();
+    setInterval(warmup, 30000);
   </script>
 </body>
 </html>
