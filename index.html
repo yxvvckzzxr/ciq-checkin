@@ -51,6 +51,22 @@
     }
     #reset-btn:hover { background: #666; }
     #scanning-text { margin-top: 12px; color: #aaa; font-size: 14px; }
+    #timer-bar-container {
+      width: 100%;
+      max-width: 500px;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      margin-top: 10px;
+      display: none;
+    }
+    #timer-bar {
+      height: 100%;
+      background: #4caf50;
+      border-radius: 3px;
+      width: 100%;
+      transition: width 3s linear;
+    }
   </style>
 </head>
 <body>
@@ -61,6 +77,9 @@
   </div>
   <p id="scanning-text">QRコードをカメラにかざしてください</p>
   <div id="result"></div>
+  <div id="timer-bar-container">
+    <div id="timer-bar"></div>
+  </div>
   <button id="reset-btn" onclick="resetScanner()">次の人へ</button>
 
   <script>
@@ -72,7 +91,10 @@
     const resultDiv = document.getElementById('result');
     const resetBtn = document.getElementById('reset-btn');
     const scanningText = document.getElementById('scanning-text');
-    let scanning = true;
+    const timerBarContainer = document.getElementById('timer-bar-container');
+    const timerBar = document.getElementById('timer-bar');
+    let processing = false;
+    let autoResetTimer = null;
 
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => {
@@ -85,15 +107,18 @@
       });
 
     function scanFrame() {
-      if (!scanning) return;
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height);
-        if (code) {
-          scanning = false;
+        if (code && !processing) {
+          processing = true;
+          if (autoResetTimer) {
+            clearTimeout(autoResetTimer);
+            autoResetTimer = null;
+          }
           scanningText.textContent = '読み取り中...';
           processQR(code.data);
         }
@@ -131,6 +156,16 @@
         resultDiv.className = 'error';
         resultDiv.innerHTML = `<div>❌ 該当者が見つかりません</div>`;
       }
+
+      // タイマーバー表示
+      timerBarContainer.style.display = 'block';
+      timerBar.style.width = '100%';
+      setTimeout(() => { timerBar.style.width = '0%'; }, 50);
+
+      // 3秒後に自動リセット
+      autoResetTimer = setTimeout(() => {
+        resetScanner();
+      }, 3000);
     }
 
     function showError(err) {
@@ -139,15 +174,28 @@
       resultDiv.innerHTML = `<div>❌ エラーが発生しました</div>`;
       resetBtn.style.display = 'inline-block';
       scanningText.style.display = 'none';
+
+      timerBarContainer.style.display = 'block';
+      timerBar.style.width = '100%';
+      setTimeout(() => { timerBar.style.width = '0%'; }, 50);
+
+      autoResetTimer = setTimeout(() => {
+        resetScanner();
+      }, 3000);
     }
 
     function resetScanner() {
+      if (autoResetTimer) {
+        clearTimeout(autoResetTimer);
+        autoResetTimer = null;
+      }
       resultDiv.style.display = 'none';
       resetBtn.style.display = 'none';
+      timerBarContainer.style.display = 'none';
+      timerBar.style.width = '100%';
       scanningText.style.display = 'block';
       scanningText.textContent = 'QRコードをカメラにかざしてください';
-      scanning = true;
-      requestAnimationFrame(scanFrame);
+      processing = false;
     }
   </script>
 </body>
