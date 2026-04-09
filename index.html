@@ -36,6 +36,7 @@
     #result.success { background: #1b5e20; border: 2px solid #4caf50; }
     #result.error { background: #b71c1c; border: 2px solid #ef5350; }
     #result.already { background: #e65100; border: 2px solid #ff9800; }
+    #result.loading { background: #1a237e; border: 2px solid #3f51b5; }
     .name { font-size: 28px; font-weight: bold; margin: 10px 0; }
     .number { font-size: 18px; color: #aaa; }
     #scanning-text { margin-top: 12px; color: #aaa; font-size: 14px; }
@@ -60,7 +61,6 @@
     const scanningText = document.getElementById('scanning-text');
     let processing = false;
     let lastUUID = '';
-    let lastUUIDTime = 0;
     let hideTimer = null;
 
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -80,17 +80,21 @@
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height);
-        if (code) {
-          const now = Date.now();
-          if ((code.data !== lastUUID || now - lastUUIDTime > 3000) && !processing) {
-            processing = true;
-            lastUUID = code.data;
-            lastUUIDTime = now;
-            processQR(code.data);
-          }
+        if (code && !processing && code.data !== lastUUID) {
+          processing = true;
+          lastUUID = code.data;
+          showLoading();
+          processQR(code.data);
         }
       }
       requestAnimationFrame(scanFrame);
+    }
+
+    function showLoading() {
+      if (hideTimer) clearTimeout(hideTimer);
+      resultDiv.style.display = 'block';
+      resultDiv.className = 'loading';
+      resultDiv.innerHTML = `<div>⏳ 読み込み中...</div>`;
     }
 
     function processQR(uuid) {
@@ -103,12 +107,14 @@
         .catch(err => {
           showError(err);
           processing = false;
+          lastUUID = ''; // エラー時はリセットして再試行できるように
         });
     }
 
     function showResult(result) {
       if (hideTimer) clearTimeout(hideTimer);
       resultDiv.style.display = 'block';
+      scanningText.textContent = 'QRコードをカメラにかざしてください';
 
       if (result.status === 'success') {
         resultDiv.className = 'success';
@@ -142,111 +148,6 @@
       hideTimer = setTimeout(() => {
         resultDiv.style.display = 'none';
       }, 3000);
-    }
-  </script>
-</body>
-</html>
-    #result.error { background: #b71c1c; border: 2px solid #ef5350; }
-    #result.already { background: #e65100; border: 2px solid #ff9800; }
-    .name { font-size: 28px; font-weight: bold; margin: 10px 0; }
-    .number { font-size: 18px; color: #aaa; }
-    #scanning-text { margin-top: 12px; color: #aaa; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <h1>CIQ the 13th 受付</h1>
-  <div id="camera-container">
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
-  </div>
-  <p id="scanning-text">QRコードをカメラにかざしてください</p>
-  <div id="result"></div>
-
-  <script>
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxUODC2F-hbGRvkOZ2EN-XRpatzJOgEwQiZxNvEZ_TFppXrgKN8rd7RcHHdEq9ZX2KW3A/exec';
-
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const resultDiv = document.getElementById('result');
-    const scanningText = document.getElementById('scanning-text');
-    let processing = false;
-    let lastUUID = '';
-    let lastUUIDTime = 0;
-
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => {
-        video.srcObject = stream;
-        video.play();
-        requestAnimationFrame(scanFrame);
-      })
-      .catch(err => {
-        scanningText.textContent = 'カメラの起動に失敗しました: ' + err.message;
-      });
-
-    function scanFrame() {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
-        if (code) {
-          const now = Date.now();
-          // 同じQRコードを3秒以内に連続読み取りしない
-          if (code.data !== lastUUID || now - lastUUIDTime > 3000) {
-            if (!processing) {
-              processing = true;
-              lastUUID = code.data;
-              lastUUIDTime = now;
-              processQR(code.data);
-            }
-          }
-        }
-      }
-      requestAnimationFrame(scanFrame);
-    }
-
-    function processQR(uuid) {
-      fetch(GAS_URL + '?uuid=' + encodeURIComponent(uuid))
-        .then(res => res.json())
-        .then(result => {
-          showResult(result);
-          processing = false;
-        })
-        .catch(err => {
-          showError(err);
-          processing = false;
-        });
-    }
-
-    function showResult(result) {
-      resultDiv.style.display = 'block';
-
-      if (result.status === 'success') {
-        resultDiv.className = 'success';
-        resultDiv.innerHTML = `
-          <div>✅ 受付完了</div>
-          <div class="name">${result.familyName} ${result.firstName}</div>
-          <div class="number">受付番号 ${result.entryNumber}</div>
-        `;
-      } else if (result.status === 'already') {
-        resultDiv.className = 'already';
-        resultDiv.innerHTML = `
-          <div>⚠️ 受付済み</div>
-          <div class="name">${result.familyName} ${result.firstName}</div>
-          <div class="number">受付番号 ${result.entryNumber}</div>
-        `;
-      } else {
-        resultDiv.className = 'error';
-        resultDiv.innerHTML = `<div>❌ 該当者が見つかりません</div>`;
-      }
-    }
-
-    function showError(err) {
-      resultDiv.style.display = 'block';
-      resultDiv.className = 'error';
-      resultDiv.innerHTML = `<div>❌ エラーが発生しました</div>`;
     }
   </script>
 </body>
